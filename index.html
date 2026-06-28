@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>Geometry Dash Clone</title>
+    <style>
+        body {
+            margin: 0;
+            background: #111;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+        }
+        canvas {
+            background: linear-gradient(#1a0033, #00001a);
+            box-shadow: 0 0 20px rgba(255, 255, 255, 0.2);
+        }
+    </style>
+</head>
+<body>
+
+<canvas id="gameCanvas" width="800" height="400"></canvas>
+
+<script>
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+
+// ゲーム設定
+const gravity = 0.6;
+let score = 0;
+let gameOver = false;
+
+// プレイヤー（四角形）
+const player = {
+    x: 100,
+    y: 300,
+    size: 30,
+    vy: 0,
+    jumpForce: -12,
+    isGrounded: false,
+    angle: 0
+};
+
+// 障害物（トゲ）
+const obstacles = [];
+const spawnRate = 90; // フレーム単位の出現間隔
+let frameCount = 0;
+
+// キー入力（スペースキーまたはクリック）
+window.addEventListener("keydown", (e) => {
+    if (e.code === "Space") jump();
+});
+canvas.addEventListener("touchstart", jump);
+window.addEventListener("click", jump);
+
+function jump() {
+    if (gameOver) {
+        resetGame();
+        return;
+    }
+    if (player.isGrounded) {
+        player.vy = player.jumpForce;
+        player.isGrounded = false;
+    }
+}
+
+function spawnObstacle() {
+    obstacles.push({
+        x: canvas.width,
+        y: 350,
+        size: 30,
+        speed: 6
+    });
+}
+
+function resetGame() {
+    obstacles.length = 0;
+    score = 0;
+    gameOver = false;
+    player.y = 320;
+    player.vy = 0;
+    player.angle = 0;
+    player.isGrounded = true;
+    loop();
+}
+
+function loop() {
+    if (gameOver) {
+        ctx.fillStyle = "white";
+        ctx.font = "40px Arial";
+        ctx.fillText("GAME OVER", canvas.width / 2 - 120, canvas.height / 2);
+        ctx.font = "20px Arial";
+        ctx.fillText("Click or Space to Restart", canvas.width / 2 - 100, canvas.height / 2 + 40);
+        return;
+    }
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    frameCount++;
+
+    // 地面の描画
+    ctx.fillStyle = "#00ffff";
+    ctx.fillRect(0, 350, canvas.width, 5);
+
+    // プレイヤーの物理演算
+    player.vy += gravity;
+    player.y += player.vy;
+
+    // 地面との当たり判定
+    if (player.y >= 320) {
+        player.y = 320;
+        player.vy = 0;
+        player.isGrounded = true;
+    }
+
+    // プレイヤーの回転アニメーション（空中でのみ回転）
+    if (!player.isGrounded) {
+        player.angle += 0.09;
+    } else {
+        // 地面にいるときは角度を90度単位にスナップ
+        player.angle = Math.round(player.angle / (Math.PI / 2)) * (Math.PI / 2);
+    }
+
+    // プレイヤーの描画
+    ctx.save();
+    ctx.translate(player.x + player.size / 2, player.y + player.size / 2);
+    ctx.rotate(player.angle);
+    ctx.fillStyle = "#ffff00";
+    ctx.fillRect(-player.size / 2, -player.size / 2, player.size, player.size);
+    ctx.strokeStyle = "#fff";
+    ctx.strokeRect(-player.size / 2, -player.size / 2, player.size, player.size);
+    ctx.restore();
+
+    // 障害物の出現
+    if (frameCount % spawnRate === 0) {
+        spawnObstacle();
+    }
+
+    // 障害物の移動と描画
+    for (let i = obstacles.length - 1; i >= 0; i--) {
+        let obs = obstacles[i];
+        obs.x -= obs.speed;
+
+        // トゲ（三角形）の描画
+        ctx.fillStyle = "#ff0055";
+        ctx.beginPath();
+        ctx.moveTo(obs.x, obs.y);
+        ctx.lineTo(obs.x + obs.size / 2, obs.y - obs.size);
+        ctx.lineTo(obs.x + obs.size, obs.y);
+        ctx.closePath();
+        ctx.fill();
+
+        // 当たり判定（簡易版）
+        if (
+            player.x < obs.x + obs.size - 5 &&
+            player.x + player.size > obs.x + 5 &&
+            player.y + player.size > obs.y - obs.size + 5
+        ) {
+            gameOver = true;
+        }
+
+        // 画面外に出たら削除
+        if (obs.x + obs.size < 0) {
+            obstacles.splice(i, 1);
+            score++;
+        }
+    }
+
+    // スコア表示
+    ctx.fillStyle = "white";
+    ctx.font = "20px Arial";
+    ctx.fillText(`Score: ${score}`, 20, 40);
+
+    requestAnimationFrame(loop);
+}
+
+// ゲーム開始
+player.isGrounded = true;
+loop();
+</script>
+</body>
+</html>
