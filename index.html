@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>Geometry Dash Clone</title>
+    <title>Geometry Dash - Custom Stage</title>
     <style>
         body {
             margin: 0;
@@ -15,8 +15,8 @@
             font-family: Arial, sans-serif;
         }
         canvas {
-            background: linear-gradient(#1a0033, #00001a);
-            box-shadow: 0 0 20px rgba(255, 255, 255, 0.2);
+            background: linear-gradient(#001133, #00001a);
+            box-shadow: 0 0 30px rgba(0, 255, 255, 0.3);
         }
     </style>
 </head>
@@ -28,100 +28,201 @@
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 
-// ゲーム設定
 const gravity = 0.6;
-let score = 0;
 let gameOver = false;
+let gameWin = false;
+let cameraX = 0; // ステージが左にスクロールするためのカメラ
 
-// プレイヤー（四角形）
+// プレイヤー設定
 const player = {
     x: 100,
-    y: 300,
+    y: 320,
     size: 30,
     vy: 0,
-    jumpForce: -12,
+    jumpForce: -11,
     isGrounded: false,
     angle: 0
 };
 
-// 障害物（トゲ）
-const obstacles = [];
-const spawnRate = 90; // フレーム単位の出現間隔
-let frameCount = 0;
+// ==========================================
+// ★ ここで本物のようなステージを作っています！
+// ==========================================
+// 0: 空白, 1: トゲ(▲), 2: ブロック(■), 3: ジャンプオーブ(〇), 4: ゴールポータル( [ ] )
+const stageMap = [
+    0,0,0,0,0,0,0,2,0,0, // スタート地点
+    1,0,0,0,1,1,0,0,0,0, // トゲの連続
+    2,2,2,0,0,0,1,0,0,0, // 段差とトゲ
+    0,0,3,0,0,0,2,2,2,0, // 空中にジャンプオーブ、その先にブロック
+    0,1,0,1,0,1,0,0,0,0, // 3連トゲ
+    2,0,0,2,0,0,2,0,0,0, // 階段のような配置
+    0,0,3,0,0,3,0,0,0,0, // 連続ジャンプオーブ
+    2,2,2,2,2,2,2,2,0,0, // 長い足場
+    1,1,1,0,0,0,0,0,0,4  // 最後に3連トゲを越えたらゴール！
+];
 
-// キー入力（スペースキーまたはクリック）
-window.addEventListener("keydown", (e) => {
-    if (e.code === "Space") jump();
-});
-canvas.addEventListener("touchstart", jump);
-window.addEventListener("click", jump);
+const blockSize = 40; // 1マスのサイズ
+const groundY = 350; // 地面の高さ
+const gameObjects = [];
 
-function jump() {
-    if (gameOver) {
+// マップデータから実際のゲームオブジェクトを生成
+function initStage() {
+    gameObjects.length = 0;
+    stageMap.forEach((type, index) => {
+        if (type === 0) return;
+
+        const objX = index * 100 + 300; // 横の配置間隔を調整
+        
+        if (type === 1) { // トゲ
+            gameObjects.push({ type: "spike", x: objX, y: groundY, width: 30, height: 30 });
+        } else if (type === 2) { // ブロック
+            gameObjects.push({ type: "block", x: objX, y: groundY - blockSize, width: blockSize, height: blockSize });
+        } else if (type === 3) { // ジャンプオーブ
+            gameObjects.push({ type: "orb", x: objX, y: groundY - 80, width: 25, height: 25, used: false });
+        } else if (type === 4) { // ゴール
+            gameObjects.push({ type: "portal", x: objX, y: groundY - 100, width: 40, height: 100 });
+        }
+    });
+}
+
+// 操作（スペース、クリック、タップ）
+let isClicking = false;
+window.addEventListener("keydown", (e) => { if (e.code === "Space") isClicking = true; });
+window.addEventListener("keyup", (e) => { if (e.code === "Space") isClicking = false; });
+window.addEventListener("mousedown", () => isClicking = true);
+window.addEventListener("mouseup", () => isClicking = false);
+
+function handleJump() {
+    if (gameOver || gameWin) {
         resetGame();
         return;
     }
-    if (player.isGrounded) {
+    if (player.isGrounded && isClicking) {
         player.vy = player.jumpForce;
         player.isGrounded = false;
     }
 }
 
-function spawnObstacle() {
-    obstacles.push({
-        x: canvas.width,
-        y: 350,
-        size: 30,
-        speed: 6
-    });
-}
-
 function resetGame() {
-    obstacles.length = 0;
-    score = 0;
     gameOver = false;
+    gameWin = false;
+    cameraX = 0;
+    player.x = 100;
     player.y = 320;
     player.vy = 0;
     player.angle = 0;
     player.isGrounded = true;
+    initStage();
     loop();
 }
 
 function loop() {
-    if (gameOver) {
+    if (gameOver || gameWin) {
         ctx.fillStyle = "white";
         ctx.font = "40px Arial";
-        ctx.fillText("GAME OVER", canvas.width / 2 - 120, canvas.height / 2);
+        if (gameOver) ctx.fillText("GAME OVER", canvas.width / 2 - 120, canvas.height / 2);
+        if (gameWin) ctx.fillText("STAGE CLEAR!", canvas.width / 2 - 140, canvas.height / 2);
         ctx.font = "20px Arial";
         ctx.fillText("Click or Space to Restart", canvas.width / 2 - 100, canvas.height / 2 + 40);
         return;
     }
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    frameCount++;
+
+    // カメラを右に進める（ゲームの強制スクロール速度）
+    cameraX += 5;
 
     // 地面の描画
     ctx.fillStyle = "#00ffff";
-    ctx.fillRect(0, 350, canvas.width, 5);
+    ctx.fillRect(0, groundY, canvas.width, 5);
 
-    // プレイヤーの物理演算
+    // プレイヤーの物理
     player.vy += gravity;
     player.y += player.vy;
+    player.isGrounded = false;
 
     // 地面との当たり判定
-    if (player.y >= 320) {
-        player.y = 320;
+    if (player.y >= groundY - player.size) {
+        player.y = groundY - player.size;
         player.vy = 0;
         player.isGrounded = true;
     }
 
-    // プレイヤーの回転アニメーション（空中でのみ回転）
+    handleJump();
+
+    // プレイヤーの回転
     if (!player.isGrounded) {
-        player.angle += 0.09;
+        player.angle += 0.08;
     } else {
-        // 地面にいるときは角度を90度単位にスナップ
         player.angle = Math.round(player.angle / (Math.PI / 2)) * (Math.PI / 2);
     }
+
+    // オブジェクトの処理と描画
+    gameObjects.forEach(obj => {
+        // カメラの動きに合わせて画面上のX座標を計算
+        const screenX = obj.x - cameraX;
+
+        if (obj.type === "spike") {
+            // トゲ（赤い▲）
+            ctx.fillStyle = "#ff0055";
+            ctx.beginPath();
+            ctx.moveTo(screenX, obj.y);
+            ctx.lineTo(screenX + obj.width / 2, obj.y - obj.height);
+            ctx.lineTo(screenX + obj.width, obj.y);
+            ctx.closePath();
+            ctx.fill();
+
+            // 衝突判定
+            if (player.x < screenX + obj.width - 5 && player.x + player.size > screenX + 5 && player.y + player.size > obj.y - obj.height + 5) {
+                gameOver = true;
+            }
+        } 
+        else if (obj.type === "block") {
+            // ブロック（青い■）
+            ctx.fillStyle = "#0088ff";
+            ctx.fillRect(screenX, obj.y, obj.width, obj.height);
+            ctx.strokeStyle = "#fff";
+            ctx.strokeRect(screenX, obj.y, obj.width, obj.height);
+
+            // ブロックの上に乗る判定
+            if (player.x < screenX + obj.width && player.x + player.size > screenX) {
+                // 足元がブロックの頭に近いとき
+                if (player.y + player.size >= obj.y && player.y + player.size <= obj.y + 15 && player.vy >= 0) {
+                    player.y = obj.y - player.size;
+                    player.vy = 0;
+                    player.isGrounded = true;
+                }
+                // 横からぶつかったらゲームオーバー
+                else if (player.y + player.size > obj.y + 10 && player.y < obj.y + obj.height) {
+                    gameOver = true;
+                }
+            }
+        } 
+        else if (obj.type === "orb") {
+            // ジャンプオーブ（光る〇）
+            ctx.fillStyle = obj.used ? "#555" : "#ffff00";
+            ctx.beginPath();
+            ctx.arc(screenX + obj.width/2, obj.y + obj.height/2, obj.width/2, 0, Math.PI*2);
+            ctx.fill();
+
+            // オーブの範囲内にいるときにタイミングよくクリックすると大ジャンプ
+            if (!obj.used && player.x < screenX + obj.width && player.x + player.size > screenX && player.y < obj.y + obj.height && player.y + player.size > obj.y) {
+                if (isClicking) {
+                    player.vy = -13; // 通常より高いジャンプ
+                    obj.used = true;
+                }
+            }
+        }
+        else if (obj.type === "portal") {
+            // ゴールポータル（縦長のゲート）
+            ctx.fillStyle = "#00ff55";
+            ctx.fillRect(screenX, obj.y, obj.width, obj.height);
+            
+            // ゴール到達判定
+            if (player.x > screenX) {
+                gameWin = true;
+            }
+        }
+    });
 
     // プレイヤーの描画
     ctx.save();
@@ -133,51 +234,11 @@ function loop() {
     ctx.strokeRect(-player.size / 2, -player.size / 2, player.size, player.size);
     ctx.restore();
 
-    // 障害物の出現
-    if (frameCount % spawnRate === 0) {
-        spawnObstacle();
-    }
-
-    // 障害物の移動と描画
-    for (let i = obstacles.length - 1; i >= 0; i--) {
-        let obs = obstacles[i];
-        obs.x -= obs.speed;
-
-        // トゲ（三角形）の描画
-        ctx.fillStyle = "#ff0055";
-        ctx.beginPath();
-        ctx.moveTo(obs.x, obs.y);
-        ctx.lineTo(obs.x + obs.size / 2, obs.y - obs.size);
-        ctx.lineTo(obs.x + obs.size, obs.y);
-        ctx.closePath();
-        ctx.fill();
-
-        // 当たり判定（簡易版）
-        if (
-            player.x < obs.x + obs.size - 5 &&
-            player.x + player.size > obs.x + 5 &&
-            player.y + player.size > obs.y - obs.size + 5
-        ) {
-            gameOver = true;
-        }
-
-        // 画面外に出たら削除
-        if (obs.x + obs.size < 0) {
-            obstacles.splice(i, 1);
-            score++;
-        }
-    }
-
-    // スコア表示
-    ctx.fillStyle = "white";
-    ctx.font = "20px Arial";
-    ctx.fillText(`Score: ${score}`, 20, 40);
-
     requestAnimationFrame(loop);
 }
 
-// ゲーム開始
-player.isGrounded = true;
+// 初期化して開始
+initStage();
 loop();
 </script>
 </body>
